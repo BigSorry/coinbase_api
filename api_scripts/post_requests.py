@@ -41,3 +41,21 @@ def createOrder():
     }
 
     postApiAdvanced(endpoint, order_payload)
+
+def buyLimitOrder(pair_id, limit_price, base_size):
+    endpoint = f"/api/v3/brokerage/orders"
+    # ==== Create order body ====
+    order_payload = {
+        "client_order_id": str(uuid.uuid4()),
+        "product_id": pair_id+"C",
+        "side": "BUY",
+        "order_configuration": {
+            "limit_limit_gtc": {
+                "base_size": base_size,
+                "limit_price": limit_price,
+                "post_only": True
+            }
+        }
+    }
+
+    postApiAdvanced(endpoint, order_payload)

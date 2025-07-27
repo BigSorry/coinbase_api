@@ -30,6 +30,18 @@ def getCurrentPrice(product_id):
     "Fetches the latest price for a given product ID from Coinbase Advanced Trade API."
     endpoint = f"/api/v3/brokerage/products/{product_id}"
     return getApiAdvanced(endpoint)
+def getCurrentBestBidAsk(product_ids):
+    "Fetches the latest price for a given product ID from Coinbase Advanced Trade API."
+    product_list = ','.join(product_ids)
+    endpoint = f"/api/v3/brokerage/best_bid_ask"
+    all_prices = getApiAdvanced(endpoint)
+    # filter out what we need, this works without getting 401
+    result = {}
+    for dict_info in all_prices["pricebooks"]:
+        product_id = dict_info['product_id']
+        if product_id in product_ids:
+            result[product_id] = dict_info
+    return result
 
 def getOrders(end_point_param):
     """Fetches open orders from Coinbase Advanced Trade API."""
