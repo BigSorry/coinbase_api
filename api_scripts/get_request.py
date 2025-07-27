@@ -1,0 +1,101 @@
+import json,requests
+import datetime
+import api_scripts.authenticate as auth
+import pandas as pd
+"""
+Method below are using a base url for the advanced coinbase api
+"""
+def getApiAdvanced(endpoint):
+    "Fetches the latest price for a given product ID from Coinbase Advanced Trade API."
+    request_method = "GET"
+    request_host = "api.coinbase.com"
+    jwt_token = auth.getJWT(request_method, request_host, endpoint)
+
+    headers = {
+        "Authorization": f"Bearer {jwt_token}",
+        "Content-Type": "application/json"
+    }
+    base_url = "https://api.coinbase.com"
+    url = base_url + endpoint
+    response = requests.get(url, headers=headers)
+
+    if response.status_code == 200:
+        data = response.json()
+        return data
+    else:
+        print(f"Error: {response.status_code}, {response.text}")
+        return None
+
+def getCurrentPrice(product_id):
+    "Fetches the latest price for a given product ID from Coinbase Advanced Trade API."
+    endpoint = f"/api/v3/brokerage/products/{product_id}"
+    return getApiAdvanced(endpoint)
+
+def getOrders(end_point_param):
+    """Fetches open orders from Coinbase Advanced Trade API."""
+    request_method = "GET"
+    request_host = "api.coinbase.com"
+    endpoint = f"/api/v3/brokerage/{end_point_param}"
+    return getApiAdvanced(endpoint)
+
+"""
+First method made for coinbase base exchange
+"""
+def getAPIData(base_url, product_ids, url_param, headers=None):
+    """
+    General function to fetch data from a specified API endpoint for a given product ID and info category.
+
+    :param base_url: The URL template with placeholders for product ID and info category,
+                              e.g., 'https://api.exchange.coinbase.com/products/{}/{}'
+    :param product_id: The product ID to be inserted into the URL
+    :param url_param: Last part of the url with parameters
+     Often the category of information to fetch (e.g., 'stats', 'ticker', 'orderbook')
+    :param headers: Optional headers to include in the request
+    :return: The fetched data as a dictionary, or None if the request fails
+    """
+    # Ensure input is a list, even if a single ID is provided
+    is_single_id = isinstance(product_ids, str)
+    if is_single_id:  # Single ID
+        product_ids = [product_ids]
+
+    headers = headers or {'Accept': 'application/json'}
+    results = {}
+    for product_id in product_ids:
+        url = base_url.format(product_id, url_param)
+        response = requests.get(url, headers=headers)
+
+        if response.status_code == 200:  # Only process successful responses
+            try:
+                data = response.json()
+                if data:  # Check if the response contains non-empty data
+                    results[product_id] = data
+            except json.JSONDecodeError:
+                print(f"Failed to parse JSON for ID {product_id}")
+        else:
+            print(f"Request failed with status code {response.status_code} for ID {product_id}, {response.content}")
+
+    return results if not is_single_id else results.get(product_ids[0])
+
+def getPriceHistory(coin_pair_ids, days_ago, granularity_unit=3600, df_return=False):
+    days_ago_limit = min(12, days_ago) # max 300 candles so actually depends on our granularity unit
+    timestamp_start = datetime.datetime.now() - pd.DateOffset(days=days_ago_limit)
+    timestamp_end = datetime.datetime.now()
+    url_param = f"candles?granularity={granularity_unit}&start={timestamp_start}&end={timestamp_end}"
+    base_url = 'https://api.exchange.coinbase.com/products/{}/{}'
+    # return dict with key id and values per timestamp
+    historical_data = getAPIData(base_url, coin_pair_ids, url_param)
+    if df_return:
+        historical_data = convertDF(historical_data)
+
+    return historical_data
+
+def convertDF(dict_data):
+    # Convert to a list of rows
+    rows = []
+    for pair, timestamp_values in dict_data.items():
+        for values in timestamp_values:
+            timestamp, open_, high, low, close, volume = values
+            dt = datetime.datetime.utcfromtimestamp(timestamp)  # Convert to readable date
+            rows.append([pair, dt, open_, high, low, close, volume])
+    # Create DataFrame
+    return pd.DataFrame(rows, columns=["pair", "timestamp", "open", "high", "low", "close", "volume"])
