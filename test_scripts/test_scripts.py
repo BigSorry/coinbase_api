@@ -2,6 +2,8 @@ import api_scripts.get_request as get_req
 import api_scripts.post_requests as post_req
 import numpy as np
 from decimal import Decimal, ROUND_DOWN
+import matplotlib.pyplot as plt
+from collections import defaultdict
 
 def testCurrentPrice():
     coin_pair = "ETH-USD"
@@ -58,9 +60,47 @@ def buyOrder(usdc_amount = 1):
 
         post_req.buyLimitOrder(product_id, str(best_bid_price), str(base_size))
 
-def testOrderBooks():
-    books = get_req.getOrderBook(product_id="BTC-USD", detail_level=2)
-    x=0
+# 👇 Grouping function
+def group_orders(prices, sizes, bucket_size):
+    grouped = defaultdict(float)
+    for p, s in zip(prices, sizes):
+        bucket = round(p / bucket_size) * bucket_size
+        grouped[bucket] += s
+    return zip(*sorted(grouped.items()))
+def testOrderBooks(depth_limit=100):
+    # Parse order book
+    book = get_req.getOrderBook(product_id="ADA-USD", detail_level=2)
+    bids = np.array(book["bids"])[:depth_limit]
+    asks = np.array(book["asks"])[:depth_limit]
+
+    bid_prices = bids[:, 0].astype(float)
+    bid_sizes = bids[:, 1].astype(float)
+
+    ask_prices = asks[:, 0].astype(float)
+    ask_sizes = asks[:, 1].astype(float)
+
+    # Cumulative sizes
+    bid_cumsum = np.cumsum(bid_sizes)
+    ask_cumsum = np.cumsum(ask_sizes)
+
+    # Plot depth chart
+    plt.figure(figsize=(12, 6))
+
+    plt.step(bid_prices, bid_cumsum, where='post', label='Bids', color='green')
+    plt.step(ask_prices, ask_cumsum, where='post', label='Asks', color='red')
+
+    # Highlight best bid and ask
+    plt.axvline(bid_prices[0], color='green', linestyle='--', alpha=0.4)
+    plt.axvline(ask_prices[0], color='red', linestyle='--', alpha=0.4)
+
+    plt.title("Order Book Depth Chart")
+    plt.xlabel("Price (USD)")
+    plt.ylabel("Cumulative Size")
+    plt.legend()
+    plt.grid(True, linestyle='--', alpha=0.5)
+    plt.tight_layout()
+    plt.show()
+
 
 testOrderBooks()
 
