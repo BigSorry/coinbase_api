@@ -16,7 +16,7 @@ def main():
     print(timestamp_start)
     for prd_id in ids_list:
         if "USD" in prd_id:
-            price_dict = prd_req.getCurrentPrice(prd_id)
+            price_dict = prd_req.getProductInfo(prd_id)
             current_price = float(price_dict["price"])
             percentage_change_24h = 0
             if price_dict["price_percentage_change_24h"] != "":

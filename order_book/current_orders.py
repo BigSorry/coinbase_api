@@ -49,16 +49,6 @@ def adjust_coin_quantities(fills):
 
     return result
 
-
-def sellProfit(old_price, old_quant, price_increase_multi):
-    sell_price = old_price * price_increase_multi
-    # Calculate the new quantity to keep the total worth the same
-    quant_new = old_quant / price_increase_multi
-    sell_amount = old_quant - quant_new
-
-    return sell_price, sell_amount
-
-
 sel_date = datetime.datetime(2025, 7, 1, 0, 0)
 end_point_param = "orders/historical/fills"
 orders = api_get.getOrders(end_point_param)
@@ -67,8 +57,7 @@ buy_fills_dict = getBuyFills(fills, sel_date)
 result = adjust_coin_quantities(buy_fills_dict)
 
 for coin_pair, buy_info in result.items():
-    price_dict = api_get.getCurrentPrice(coin_pair)
-    current_price = float(price_dict["price"])
+    current_price = api_get.getCurrentPrice(coin_pair)
     price_percent_change = (current_price / buy_info["avg_price"]) * 100
 
     print(coin_pair)

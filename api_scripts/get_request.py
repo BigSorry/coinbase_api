@@ -26,10 +26,42 @@ def getApiAdvanced(endpoint):
         print(f"Error: {response.status_code}, {response.text}")
         return None
 
-def getCurrentPrice(product_id):
+def getPortfolio(min_value_usdc=50, fiat_currency="USD"):
     "Fetches the latest price for a given product ID from Coinbase Advanced Trade API."
+    endpoint = f"/api/v3/brokerage/accounts"
+    portfolio_data = getApiAdvanced(endpoint)
+    items_included = {}
+    fiats = ["USD", "USDC", "EUR", "GBP", "JPY", "AUD", "CAD"]
+    for account in portfolio_data.get('accounts', []):
+        balance = float(account['available_balance']['value'])
+        if balance is None or balance <= 0:
+            continue
+        currency = account["currency"]
+        if any(fiat in currency for fiat in fiats):
+            # Skip fiat currencies
+            continue
+        product_id = f"{currency}-{fiat_currency}"
+        current_price = getCurrentPrice(product_id)
+        total_value = balance * current_price if current_price else 0
+        if total_value > min_value_usdc:
+            print(f"{account['currency']}: {balance}")
+            items_included[product_id] = balance
+    return items_included
+def getProductInfo(product_id):
+    "Get Product details "
     endpoint = f"/api/v3/brokerage/products/{product_id}"
     return getApiAdvanced(endpoint)
+def getCurrentPrice(product_id):
+    "Fetches the latest price for a given product ID from Coinbase Advanced Trade API."
+    endpoint = f"/api/v3/brokerage/products/{product_id}/ticker"
+    price_dict = getApiAdvanced(endpoint)
+    bid_price = price_dict["best_bid"]
+    ask_price = price_dict["best_ask"]
+    if not bid_price or not ask_price:
+        spot_price = price_dict['trades'][0]['price']
+    else:
+        spot_price = (float(bid_price) + float(ask_price)) / 2
+    return spot_price
 def getCurrentBestBidAsk(product_ids):
     "Fetches the latest price for a given product ID from Coinbase Advanced Trade API."
     product_list = ','.join(product_ids)

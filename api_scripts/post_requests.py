@@ -1,4 +1,4 @@
-import json ,requests
+import json, requests
 import api_scripts.authenticate as auth
 import uuid
 import time

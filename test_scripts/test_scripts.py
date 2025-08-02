@@ -4,10 +4,10 @@ import numpy as np
 from decimal import Decimal, ROUND_DOWN
 
 def testCurrentPrice():
-    coin_pair = "BTC-USD"
-    price_dict = get_req.getCurrentPrice(coin_pair)
-    current_price = float(price_dict["price"])
+    coin_pair = "ETH-USD"
+    current_price = get_req.getCurrentPrice(coin_pair)
     print(coin_pair, current_price)
+
 
 # Get a list of fills filtered by optional query parameters
 def testOpenOrder():
@@ -58,8 +58,8 @@ def buyOrder(usdc_amount = 1):
 
         post_req.buyLimitOrder(product_id, str(best_bid_price), str(base_size))
 
-buyOrder(usdc_amount = 100)
+#buyOrder(usdc_amount = 1)
 # testPriceHistory()
 # testCreateOrder()
-# testCurrentPrice()
+testCurrentPrice()
 # testOpenOrder()

@@ -11,7 +11,7 @@ def buyOrder(usdc_amount = 1):
                    "ADA-USD", "SUI-USD", "HBAR-USD"]
     prices = get_req.getCurrentBestBidAsk(product_ids)
     for product_id in product_ids:
-        info = get_req.getCurrentPrice(product_id)
+        info = get_req.getProductInfo(product_id)
         if 'price' not in info:
             print(f"❌ Failed to fetch product info for {product_id}")
             continue
