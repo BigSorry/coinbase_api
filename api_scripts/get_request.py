@@ -44,7 +44,6 @@ def getPortfolio(min_value_usdc=50, fiat_currency="USD"):
         current_price = getCurrentPrice(product_id)
         total_value = balance * current_price if current_price else 0
         if total_value > min_value_usdc:
-            print(f"{account['currency']}: {balance}")
             items_included[product_id] = balance
     return items_included
 def getProductInfo(product_id):
