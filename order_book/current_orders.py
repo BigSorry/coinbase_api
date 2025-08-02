@@ -43,7 +43,7 @@ def sellProfit(old_price, old_quant, price_increase_multi):
     return sell_price, sell_amount
 
 
-sel_date = datetime.datetime(2025, 6, 1, 0, 0)
+sel_date = datetime.datetime(2025, 7, 1, 0, 0)
 #sel_date = datetime.datetime(2025, 6, 20, 0, 0)
 rfc3339_timestamp = sel_date.strftime("%Y-%m-%dT%H:%M:%SZ")
 params = f"?start_sequence_timestamp={rfc3339_timestamp}"
@@ -70,8 +70,7 @@ for fill in fills:
 price_increase = 1
 result = adjust_coin_quantities(buy_pair_dict, percentage_increase=price_increase)
 for coin_pair, buy_info in result.items():
-    endpoint = f"/api/v3/brokerage/products/{coin_pair}/"
-    price_dict = prd_req.getApiAdvanced(endpoint)
+    price_dict = prd_req.getCurrentPrice(coin_pair)
     current_price = float(price_dict["price"])
     price_increase = (current_price / buy_info["original_avg_price"]) * 100
     print(coin_pair)
