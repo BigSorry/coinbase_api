@@ -58,8 +58,14 @@ def buyOrder(usdc_amount = 1):
 
         post_req.buyLimitOrder(product_id, str(best_bid_price), str(base_size))
 
+def testOrderBooks():
+    books = get_req.getOrderBook(product_id="BTC-USD", detail_level=2)
+    x=0
+
+testOrderBooks()
+
 #buyOrder(usdc_amount = 1)
 # testPriceHistory()
 # testCreateOrder()
-testCurrentPrice()
+#testCurrentPrice()
 # testOpenOrder()

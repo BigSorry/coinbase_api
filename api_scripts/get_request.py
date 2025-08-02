@@ -119,6 +119,17 @@ def getAPIData(base_url, product_ids, url_param, headers=None):
 
     return results if not is_single_id else results.get(product_ids[0])
 
+
+def getOrderBook(product_id="BTC-USD", detail_level=2):
+    base_url = 'https://api.exchange.coinbase.com/products/{}/{}'
+    # level three gets entire order book
+    url_param = f"book?level={detail_level}"
+    # return dict with key id and values per timestamp
+    order_books = getAPIData(base_url, product_id, url_param)
+
+    return order_books
+
+
 def getPriceHistory(coin_pair_ids, days_ago, granularity_unit=3600, df_return=False):
     days_ago_limit = min(12, days_ago) # max 300 candles so actually depends on our granularity unit
     timestamp_start = datetime.datetime.now() - pd.DateOffset(days=days_ago_limit)
