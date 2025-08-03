@@ -4,6 +4,7 @@ import numpy as np
 from decimal import Decimal, ROUND_DOWN
 import matplotlib.pyplot as plt
 from collections import defaultdict
+from analyze_script.orderbook_analyze import OrderBookAnalyzer
 
 def testCurrentPrice():
     coin_pair = "ETH-USD"
@@ -67,9 +68,15 @@ def group_orders(prices, sizes, bucket_size):
         bucket = round(p / bucket_size) * bucket_size
         grouped[bucket] += s
     return zip(*sorted(grouped.items()))
-def testOrderBooks(depth_limit=100):
+def testOrderBooks(depth_limit=500):
     # Parse order book
-    book = get_req.getOrderBook(product_id="ADA-USD", detail_level=2)
+    book = get_req.getOrderBook(product_id="BTC-USD", detail_level=2)
+    analyzer = OrderBookAnalyzer("../data/websocket/coinbase_orderbook.jsonl")
+    # Load data
+    analyzer.load_data()  # Limit for testing
+    # Get available products
+    order_book_state = analyzer.order_books["BTC-USD"]
+
     bids = np.array(book["bids"])[:depth_limit]
     asks = np.array(book["asks"])[:depth_limit]
 
@@ -79,6 +86,10 @@ def testOrderBooks(depth_limit=100):
     ask_prices = asks[:, 0].astype(float)
     ask_sizes = asks[:, 1].astype(float)
 
+    # second method
+    bids, asks = order_book_state.get_depth_data(levels=depth_limit)
+    bid_prices, bid_sizes = zip(*bids) if bids else ([], [])
+    ask_prices, ask_sizes = zip(*asks) if asks else ([], [])
     # Cumulative sizes
     bid_cumsum = np.cumsum(bid_sizes)
     ask_cumsum = np.cumsum(ask_sizes)
