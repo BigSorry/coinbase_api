@@ -118,7 +118,7 @@ class OrderBookAnalyzer:
 
             if msg_type == 'snapshot':
                 self._process_snapshot(msg, product_id)
-            elif msg_type == 'l2update':
+            elif msg_type == 'update':
                 self._process_l2_update(msg, product_id)
 
     def _process_snapshot(self, msg: Dict, product_id: str) -> None:
@@ -243,7 +243,7 @@ class OrderBookAnalyzer:
         return metrics
 
     def create_depth_chart(self, product_id: str, timestamp: Optional[str] = None,
-                           levels: int = 50, interactive: bool = True) -> None:
+                           levels: int = 500, interactive: bool = True) -> None:
         """Create a depth chart visualization"""
         if product_id not in self.order_books:
             raise ValueError(f"No data available for product: {product_id}")
@@ -398,7 +398,7 @@ def main():
     analyzer = OrderBookAnalyzer("../data/websocket/coinbase_orderbook.jsonl")
 
     # Load data
-    analyzer.load_data()  # Limit for testing
+    analyzer.load_data(limit=1000)  # Limit for testing
 
     # Get available products
     products = list(analyzer.order_books.keys())

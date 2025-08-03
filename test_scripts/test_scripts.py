@@ -4,7 +4,7 @@ import numpy as np
 from decimal import Decimal, ROUND_DOWN
 import matplotlib.pyplot as plt
 from collections import defaultdict
-from analyze_script.orderbook_analyze import OrderBookAnalyzer
+from websocket_scripts.orderbook_analyze import OrderBookAnalyzer
 
 def testCurrentPrice():
     coin_pair = "ETH-USD"
