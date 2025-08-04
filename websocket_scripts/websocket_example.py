@@ -29,6 +29,7 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 import queue
 from contextlib import contextmanager
+from orderbook_analyze import OrderBookState
 
 # Configure logging
 logging.basicConfig(
@@ -60,31 +61,6 @@ class OrderBookConfig:
             self.product_ids = ["BTC-USD"]
 
 
-@dataclass
-class OrderBookSnapshot:
-    """Structured representation of order book data"""
-    timestamp: str
-    product_id: str
-    sequence_num: Optional[int]
-    bids: List[List[str]]
-    asks: List[List[str]]
-    message_type: str
-
-    @property
-    def top_bid(self) -> Optional[float]:
-        return max(float(bid[0]) for bid in self.bids) if self.bids else None
-
-    @property
-    def top_ask(self) -> Optional[float]:
-        return min(float(ask[0]) for ask in self.asks) if self.asks else None
-
-    @property
-    def spread(self) -> Optional[float]:
-        if self.top_bid and self.top_ask:
-            return self.top_ask - self.top_bid
-        return None
-
-
 class OrderBookTracker:
     """
     Improved Coinbase WebSocket order book tracker with proper error handling,
@@ -101,7 +77,7 @@ class OrderBookTracker:
         self.message_queue = queue.Queue()
         self.reconnect_count = 0
         self.last_ping = time.time()
-
+        self.order_books: Dict[str, OrderBookState] = {}
         # Register signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -159,7 +135,6 @@ class OrderBookTracker:
         """Handle incoming WebSocket messages"""
         try:
             data = json.loads(message)
-
             # Add timestamp to the data
             data['received_at'] = datetime.now(timezone.utc).isoformat()
 
@@ -177,66 +152,34 @@ class OrderBookTracker:
 
     def _process_message(self, data: Dict[str, Any]):
         """Process different types of messages"""
-        message_type = data.get("type")
+        message_type = data["events"][0].get("type")
 
         if message_type == "subscriptions":
             logger.info(f"Subscription confirmed: {data}")
 
         elif message_type == "snapshot":
-            self._process_snapshot(data)
+            logger.info(f"Orderbook snapshot")
+            product_id = data['product_id']
+            logger.info(f"Snapshot received for {product_id}")
 
-        elif message_type == "l2update":
-            self._process_l2_update(data)
+            # Create new OrderBookState from snapshot
+            book = OrderBookState(
+                timestamp=data["received_at"],
+                product_id=product_id,
+                sequence_num=data.get("sequence"),
+            )
+            book.process_snapshot(data, ' ')
+            self.order_books[product_id] = book
+
+        elif message_type == "update":
+            product_id = data['product_id']
+            self.order_books[product_id].process_update(data, ' ')
 
         elif message_type == "error":
             logger.error(f"WebSocket error message: {data}")
 
         else:
             logger.debug(f"Unknown message type: {message_type}")
-
-    def _process_snapshot(self, data: Dict[str, Any]):
-        """Process snapshot messages"""
-        try:
-            snapshot = OrderBookSnapshot(
-                timestamp=data.get('received_at', ''),
-                product_id=data.get('product_id', ''),
-                sequence_num=data.get('sequence_num'),
-                bids=data.get('bids', []),
-                asks=data.get('asks', []),
-                message_type='snapshot'
-            )
-
-            if snapshot.top_bid and snapshot.top_ask and snapshot.spread is not None:
-                logger.info(
-                    f"[{snapshot.product_id}] Snapshot - "
-                    f"Top Bid: ${snapshot.top_bid:.2f}, "
-                    f"Top Ask: ${snapshot.top_ask:.2f}, "
-                    f"Spread: ${snapshot.spread:.2f}"
-                )
-
-        except Exception as e:
-            logger.error(f"Error processing snapshot: {e}")
-
-    def _process_l2_update(self, data: Dict[str, Any]):
-        """Process level 2 update messages"""
-        try:
-            product_id = data.get('product_id', 'Unknown')
-            updates = data.get('updates', [])
-
-            logger.info(f"[{product_id}] L2 Update - {len(updates)} changes")
-
-            for update in updates:
-                side = update.get('side')
-                price = update.get('price_level')
-                size = update.get('new_quantity', '0')
-
-                if float(size) == 0:
-                    logger.debug(f"  Removed {side} at ${price}")
-                else:
-                    logger.debug(f"  Updated {side}: ${price} @ {size}")
-
-        except Exception as e:
-            logger.error(f"Error processing L2 update: {e}")
 
     def _on_error(self, ws, error):
         """Handle WebSocket errors"""
