@@ -147,14 +147,14 @@ class OrderBookTracker:
             logger.info(f"Orderbook snapshot")
             product_id = data["events"][0]['product_id']
             logger.info(f"Snapshot received for {product_id}")
-
+            timestamp_str = data['received_at'].replace(":", "-").replace("+", "_").split(".")[0]
             # Create new OrderBookState from snapshot
             book = OrderBookState(
                 timestamp=data["received_at"],
                 product_id=product_id,
                 sequence_num=data.get("sequence"),
                 output_file=Path(f"./data/order_book_{product_id}"
-                                 f"_{data['received_at'],}.jsonl")
+                                 f"_{timestamp_str}.jsonl")
             )
             book.process_snapshot(data)
             self.order_books[product_id] = book

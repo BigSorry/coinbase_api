@@ -1,4 +1,5 @@
 import json
+import gzip
 from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass, field
@@ -15,7 +16,7 @@ class OrderBookState:
 
     # ⏱️ Track last write time
     last_write_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    write_interval: int = 30  # seconds (configurable)
+    write_interval: int = 60  # seconds (configurable)
 
     output_file: Optional[Path] = None  # set by caller
 
@@ -104,7 +105,9 @@ class OrderBookState:
 
             try:
                 self.output_file.parent.mkdir(parents=True, exist_ok=True)
-                with open(self.output_file, 'a', encoding='utf-8') as f:
+                # with open(self.output_file, 'a', encoding='utf-8') as f:
+                #     f.write(json.dumps(data_order_book) + '\n')
+                with gzip.open(f"{self.output_file}.gz", "at", encoding='utf-8') as f:
                     f.write(json.dumps(data_order_book) + '\n')
             except Exception as e:
                 print(f"[OrderBookState] Failed to write metrics: {e}")
