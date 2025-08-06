@@ -90,16 +90,6 @@ class OrderBookTracker:
         logger.info(f"Received signal {sig}. Initiating graceful shutdown...")
         self.shutdown()
 
-    @contextmanager
-    def _file_writer(self):
-        """Context manager for safe file operations"""
-        try:
-            with open(self.config.output_file, 'a', encoding='utf-8') as f:
-                yield f
-        except IOError as e:
-            logger.error(f"File write error: {e}")
-            raise
-
     def _create_subscription_message(self) -> str:
         """Create subscription message"""
         message = {
@@ -138,10 +128,6 @@ class OrderBookTracker:
             # Add timestamp to the data
             data['received_at'] = datetime.now(timezone.utc).isoformat()
 
-            # Write to file safely
-            with self._file_writer() as f:
-                f.write(json.dumps(data) + '\n')
-
             # Process different message types
             self._process_message(data)
 
@@ -159,7 +145,7 @@ class OrderBookTracker:
 
         elif message_type == "snapshot":
             logger.info(f"Orderbook snapshot")
-            product_id = data['product_id']
+            product_id = data["events"][0]['product_id']
             logger.info(f"Snapshot received for {product_id}")
 
             # Create new OrderBookState from snapshot
@@ -167,13 +153,22 @@ class OrderBookTracker:
                 timestamp=data["received_at"],
                 product_id=product_id,
                 sequence_num=data.get("sequence"),
+                output_file=Path(f"./data/order_book_{product_id}"
+                                 f"_{data['received_at'],}.jsonl")
             )
-            book.process_snapshot(data, ' ')
+            book.process_snapshot(data)
             self.order_books[product_id] = book
 
         elif message_type == "update":
-            product_id = data['product_id']
-            self.order_books[product_id].process_update(data, ' ')
+            product_id = data["events"][0]['product_id']
+            current_book = self.order_books.get(product_id)
+            if current_book:
+                current_book.process_update(data)
+                last_save_time = current_book.last_write_time
+                current_book.write_metrics_if_due()
+                save_time = current_book.last_write_time
+                if save_time != last_save_time:
+                    logger.info(f"Order book saved for {product_id} at {save_time.isoformat()}")
 
         elif message_type == "error":
             logger.error(f"WebSocket error message: {data}")

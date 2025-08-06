@@ -1,7 +1,9 @@
+import json
+from datetime import datetime, timezone, timedelta
 from typing import Dict, List, Tuple, Optional, Any
 from dataclasses import dataclass, field
 from sortedcontainers import SortedDict
-
+from pathlib import Path
 @dataclass
 class OrderBookState:
     """Complete order book state at a point in time"""
@@ -11,13 +13,13 @@ class OrderBookState:
     bids: SortedDict = field(default_factory=lambda: SortedDict(lambda x: -float(x)))  # Highest price first
     asks: SortedDict = field(default_factory=lambda: SortedDict(lambda x: float(x)))  # Lowest price first
 
-    def _process_messages(self) -> None:
-        """Process raw messages into order book states"""
-        for msg in self.raw_data:
-            events = msg.get('events', [])[0]
-            msg_type = events.get('type')
-            product_id = events.get('product_id', 'UNKNOWN')
-    def process_snapshot(self, msg: Dict, product_id: str) -> None:
+    # ⏱️ Track last write time
+    last_write_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    write_interval: int = 30  # seconds (configurable)
+
+    output_file: Optional[Path] = None  # set by caller
+
+    def process_snapshot(self, msg: Dict) -> None:
         """Process snapshot message"""
         update_list = msg.get('events', [])[0]['updates']
         # Parse bids and asks
@@ -30,8 +32,13 @@ class OrderBookState:
                     self.bids[price] = size
                 elif side == 'offer':
                     self.asks[price] = size
-    def process_update(self, msg: Dict, product_id: str) -> None:
+    def process_meta_data(self, msg: Dict) -> None:
+        # Set sequence number and timestamp
+        self.sequence_num = msg.get('sequence_num', -1)
+        self.timestamp = msg.get('received_at', datetime.now(timezone.utc).isoformat())
+    def process_update(self, msg: Dict) -> None:
         # Apply updates
+        self.process_meta_data(msg)
         update_list = msg.get('events', [])[0]['updates']
         for update_item in update_list:
             side = update_item.get('side')
@@ -76,3 +83,28 @@ class OrderBookState:
         sorted_asks = sorted(self.asks.items())[:levels]
 
         return sorted_bids, sorted_asks
+
+    def write_metrics_if_due(self):
+        """Write best bid/ask/spread to file if enough time has passed."""
+        now = datetime.now(timezone.utc)
+
+        if (now - self.last_write_time).total_seconds() >= self.write_interval:
+            self.last_write_time = now
+
+            if not self.output_file:
+                return  # Skip if output path not set
+
+            data_order_book = {
+                "timestamp": now.isoformat(),
+                "product_id": self.product_id,
+                "sequence_num": self.sequence_num,
+                "bids": list(self.bids.items()),
+                "asks": list(self.asks.items()),
+            }
+
+            try:
+                self.output_file.parent.mkdir(parents=True, exist_ok=True)
+                with open(self.output_file, 'a', encoding='utf-8') as f:
+                    f.write(json.dumps(data_order_book) + '\n')
+            except Exception as e:
+                print(f"[OrderBookState] Failed to write metrics: {e}")
