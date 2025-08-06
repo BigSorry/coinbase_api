@@ -2,8 +2,19 @@ import pickle
 import csv
 import os
 import pandas as pd
+import gzip
+import json
 
-
+def readZIP(file_path):
+    " Reads a gzipped JSON file and returns a list of dictionaries."
+    with gzip.open(file_path, 'rt', encoding='utf-8') as f:
+        data = []
+        for line in f:
+            try:
+                data.append(json.loads(line))
+            except json.JSONDecodeError as e:
+                print(f"Skipping malformed line: {e}")
+        return data
 def savePickle(path, python_object):
     with open(path, "wb") as fp:
         pickle.dump(python_object, fp)

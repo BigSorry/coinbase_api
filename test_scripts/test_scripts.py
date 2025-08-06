@@ -4,7 +4,9 @@ import numpy as np
 from decimal import Decimal, ROUND_DOWN
 import matplotlib.pyplot as plt
 from collections import defaultdict
-from websocket_scripts.orderbook_analyze import OrderBookAnalyzer
+
+import util
+from websocket_scripts.orderbook_analyze import OrderBookState
 
 def testCurrentPrice():
     coin_pair = "ETH-USD"
@@ -68,28 +70,37 @@ def group_orders(prices, sizes, bucket_size):
         bucket = round(p / bucket_size) * bucket_size
         grouped[bucket] += s
     return zip(*sorted(grouped.items()))
-def testOrderBooks(depth_limit=500):
+def testOrderBooks(depth_limit=100):
     # Parse order book
-    book = get_req.getOrderBook(product_id="BTC-USD", detail_level=2)
-    analyzer = OrderBookAnalyzer("../data/websocket/coinbase_orderbook.jsonl")
-    # Load data
-    analyzer.load_data()  # Limit for testing
-    # Get available products
-    order_book_state = analyzer.order_books["BTC-USD"]
+    # Read file (list of snapshots)
+    snapshots = util.readZIP("../websocket_scripts/data/order_book_BTC-USD_2025-08-06T17-08-59.jsonl.gz")
 
-    bids = np.array(book["bids"])[:depth_limit]
-    asks = np.array(book["asks"])[:depth_limit]
+    if not snapshots:
+        print("No snapshots found.")
+        return
 
-    bid_prices = bids[:, 0].astype(float)
-    bid_sizes = bids[:, 1].astype(float)
+    # Use the latest snapshot (or choose based on index)
+    latest_snapshot = snapshots[-1]
 
-    ask_prices = asks[:, 0].astype(float)
-    ask_sizes = asks[:, 1].astype(float)
+    # Reconstruct OrderBookState from snapshot
+    book = OrderBookState(
+        timestamp=latest_snapshot["timestamp"],
+        product_id=latest_snapshot["product_id"],
+        sequence_num=latest_snapshot.get("sequence_num")
+    )
 
-    # second method
-    bids, asks = order_book_state.get_depth_data(levels=depth_limit)
+    # Restore bids and asks
+    for price, size in latest_snapshot["bids"]:
+        book.bids[float(price)] = float(size)
+
+    for price, size in latest_snapshot["asks"]:
+        book.asks[float(price)] = float(size)
+
+    # Get depth data
+    bids, asks = book.get_depth_data(levels=depth_limit)
     bid_prices, bid_sizes = zip(*bids) if bids else ([], [])
     ask_prices, ask_sizes = zip(*asks) if asks else ([], [])
+
     # Cumulative sizes
     bid_cumsum = np.cumsum(bid_sizes)
     ask_cumsum = np.cumsum(ask_sizes)
