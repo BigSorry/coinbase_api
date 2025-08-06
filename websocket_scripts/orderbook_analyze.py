@@ -37,6 +37,7 @@ class OrderBookState:
         # Set sequence number and timestamp
         self.sequence_num = msg.get('sequence_num', -1)
         self.timestamp = msg.get('received_at', datetime.now(timezone.utc).isoformat())
+
     def process_update(self, msg: Dict) -> None:
         # Apply updates
         self.process_meta_data(msg)
@@ -78,12 +79,10 @@ class OrderBookState:
         return None
 
     def get_depth_data(self, levels: int = 50) -> Tuple[List[Tuple[float, float]], List[Tuple[float, float]]]:
-        """Get depth data for visualization"""
-        # Sort bids (highest to lowest) and asks (lowest to highest)
-        sorted_bids = sorted(self.bids.items(), reverse=True)[:levels]
-        sorted_asks = sorted(self.asks.items())[:levels]
-
-        return sorted_bids, sorted_asks
+        """Get top N levels of bids and asks for depth visualization"""
+        bids = list(self.bids.items())[:levels]
+        asks = list(self.asks.items())[:levels]
+        return bids, asks
 
     def write_metrics_if_due(self):
         """Write best bid/ask/spread to file if enough time has passed."""

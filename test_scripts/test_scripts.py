@@ -70,57 +70,57 @@ def group_orders(prices, sizes, bucket_size):
         bucket = round(p / bucket_size) * bucket_size
         grouped[bucket] += s
     return zip(*sorted(grouped.items()))
-def testOrderBooks(depth_limit=100):
+def testOrderBooks(depth_limit=1000):
     # Parse order book
     # Read file (list of snapshots)
-    snapshots = util.readZIP("../websocket_scripts/data/order_book_BTC-USD_2025-08-06T17-08-59.jsonl.gz")
+    snapshots = util.readZIP("../websocket_scripts/data/order_book_ETH-USD_2025-08-06T18-42-10.jsonl.gz")
 
     if not snapshots:
         print("No snapshots found.")
         return
+    for i in range(len(snapshots)):
+        # Use the latest snapshot (or choose based on index)
+        latest_snapshot = snapshots[i]
 
-    # Use the latest snapshot (or choose based on index)
-    latest_snapshot = snapshots[-1]
+        # Reconstruct OrderBookState from snapshot
+        book = OrderBookState(
+            timestamp=latest_snapshot["timestamp"],
+            product_id=latest_snapshot["product_id"],
+            sequence_num=latest_snapshot.get("sequence_num")
+        )
 
-    # Reconstruct OrderBookState from snapshot
-    book = OrderBookState(
-        timestamp=latest_snapshot["timestamp"],
-        product_id=latest_snapshot["product_id"],
-        sequence_num=latest_snapshot.get("sequence_num")
-    )
+        # Restore bids and asks
+        for price, size in latest_snapshot["bids"]:
+            book.bids[float(price)] = float(size)
 
-    # Restore bids and asks
-    for price, size in latest_snapshot["bids"]:
-        book.bids[float(price)] = float(size)
+        for price, size in latest_snapshot["asks"]:
+            book.asks[float(price)] = float(size)
 
-    for price, size in latest_snapshot["asks"]:
-        book.asks[float(price)] = float(size)
+        # Get depth data
+        bids, asks = book.get_depth_data(levels=depth_limit)
+        bid_prices, bid_sizes = zip(*bids) if bids else ([], [])
+        ask_prices, ask_sizes = zip(*asks) if asks else ([], [])
 
-    # Get depth data
-    bids, asks = book.get_depth_data(levels=depth_limit)
-    bid_prices, bid_sizes = zip(*bids) if bids else ([], [])
-    ask_prices, ask_sizes = zip(*asks) if asks else ([], [])
+        # Cumulative sizes
+        bid_cumsum = np.cumsum(bid_sizes)
+        ask_cumsum = np.cumsum(ask_sizes)
 
-    # Cumulative sizes
-    bid_cumsum = np.cumsum(bid_sizes)
-    ask_cumsum = np.cumsum(ask_sizes)
+        # Plot depth chart
+        plt.figure(figsize=(12, 6))
 
-    # Plot depth chart
-    plt.figure(figsize=(12, 6))
+        plt.step(bid_prices, bid_cumsum, where='post', label='Bids', color='green')
+        plt.step(ask_prices, ask_cumsum, where='post', label='Asks', color='red')
 
-    plt.step(bid_prices, bid_cumsum, where='post', label='Bids', color='green')
-    plt.step(ask_prices, ask_cumsum, where='post', label='Asks', color='red')
+        # Highlight best bid and ask
+        plt.axvline(bid_prices[0], color='green', linestyle='--', alpha=0.4)
+        plt.axvline(ask_prices[0], color='red', linestyle='--', alpha=0.4)
 
-    # Highlight best bid and ask
-    plt.axvline(bid_prices[0], color='green', linestyle='--', alpha=0.4)
-    plt.axvline(ask_prices[0], color='red', linestyle='--', alpha=0.4)
-
-    plt.title("Order Book Depth Chart")
-    plt.xlabel("Price (USD)")
-    plt.ylabel("Cumulative Size")
-    plt.legend()
-    plt.grid(True, linestyle='--', alpha=0.5)
-    plt.tight_layout()
+        plt.title("Order Book Depth Chart")
+        plt.xlabel("Price (USD)")
+        plt.ylabel("Cumulative Size")
+        plt.legend()
+        plt.grid(True, linestyle='--', alpha=0.5)
+        plt.tight_layout()
     plt.show()
 
 
