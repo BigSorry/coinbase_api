@@ -18,18 +18,16 @@ pip install websocket-client
 
 import json
 import signal
-import sys
 import websocket
 import threading
 import time
 import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
 import queue
-from contextlib import contextmanager
-from orderbook_analyze import OrderBookState
+from order_book_state import OrderBookState
 
 # Configure logging
 logging.basicConfig(
@@ -49,7 +47,6 @@ class OrderBookConfig:
     ws_url: str = "wss://advanced-trade-ws.coinbase.com"
     product_ids: List[str] = None
     channel_name: str = "level2"
-    output_file: str = "coinbase_orderbook.jsonl"
     auto_unsubscribe_after: Optional[int] = None  # seconds
     reconnect_attempts: int = 5
     reconnect_delay: int = 5
@@ -81,9 +78,6 @@ class OrderBookTracker:
         # Register signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
-
-        # Ensure output directory exists
-        Path(self.config.output_file).parent.mkdir(parents=True, exist_ok=True)
 
     def _signal_handler(self, sig, frame):
         """Handle shutdown signals gracefully"""
@@ -238,7 +232,6 @@ class OrderBookTracker:
         logger.info("Starting Coinbase order book tracker...")
         logger.info(f"Products: {self.config.product_ids}")
         logger.info(f"Channel: {self.config.channel_name}")
-        logger.info(f"Output file: {self.config.output_file}")
 
         self.running.set()
 
@@ -316,7 +309,6 @@ def main():
     config = OrderBookConfig(
         product_ids=["BTC-USD", "ETH-USD"],  # Multiple products
         channel_name="level2",
-        output_file="../data/websocket/coinbase_orderbook.jsonl",
         auto_unsubscribe_after=None,  # Set to None for continuous running
         reconnect_attempts=5,
         reconnect_delay=5

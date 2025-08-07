@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 
 import util
-from websocket_scripts.orderbook_analyze import OrderBookState
+from websocket_scripts.order_book_state import OrderBookState
 
 def testCurrentPrice():
     coin_pair = "ETH-USD"
