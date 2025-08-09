@@ -13,6 +13,8 @@ class BaseOrderBook:
     last_write_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     write_interval: int = 60
     output_file: Optional[Path] = None
+    bids: SortedDict = field(default_factory=lambda: SortedDict(lambda x: -float(x)))
+    asks: SortedDict = field(default_factory=lambda: SortedDict(lambda x: float(x)))
 
     def process_meta_data(self, msg: Dict) -> None:
         self.sequence_num = msg.get('sequence_num', -1)
@@ -20,11 +22,13 @@ class BaseOrderBook:
 
     @property
     def best_bid(self) -> Optional[float]:
-        raise NotImplementedError
+        # SortedDict with key function -x keeps highest price at index 0
+        return self.bids.peekitem(0)[0] if self.bids else None
 
     @property
     def best_ask(self) -> Optional[float]:
-        raise NotImplementedError
+        # SortedDict with key function x keeps lowest price at index 0
+        return self.asks.peekitem(0)[0] if self.asks else None
 
     @property
     def spread(self) -> Optional[float]:
@@ -37,6 +41,12 @@ class BaseOrderBook:
         if self.best_bid and self.best_ask:
             return (self.best_bid + self.best_ask) / 2
         return None
+
+    def imbalance(self):
+        bid_vol = sum(self.bids.values())
+        ask_vol = sum(self.asks.values())
+        total = bid_vol + ask_vol
+        return bid_vol / total if total > 0 else None
 
     def write_if_due(self):
         now = datetime.now(timezone.utc)
@@ -51,9 +61,6 @@ class BaseOrderBook:
 # -------- FULL MODE --------
 @dataclass
 class FullOrderBookState(BaseOrderBook):
-    bids: SortedDict = field(default_factory=lambda: SortedDict(lambda x: -float(x)))
-    asks: SortedDict = field(default_factory=lambda: SortedDict(lambda x: float(x)))
-
     def process_snapshot(self, msg: Dict) -> None:
         for u in msg.get('events', [])[0]['updates']:
             side = u.get('side')
@@ -75,14 +82,6 @@ class FullOrderBookState(BaseOrderBook):
                 book.pop(price, None)
             else:
                 book[price] = size
-
-    @property
-    def best_bid(self) -> Optional[float]:
-        return self.bids.peekitem(0)[0] if self.bids else None
-
-    @property
-    def best_ask(self) -> Optional[float]:
-        return self.asks.peekitem(0)[0] if self.asks else None
 
     def _write_snapshot(self, now: datetime):
         if not self.output_file:
@@ -107,35 +106,29 @@ class FullOrderBookState(BaseOrderBook):
 @dataclass
 class LightOrderBookState(BaseOrderBook):
     top_n: int = 10
-    bids: List[Tuple[float, float]] = field(default_factory=list)
-    asks: List[Tuple[float, float]] = field(default_factory=list)
+    write_interval: int = 60
 
     def process_snapshot(self, msg: Dict) -> None:
         for u in msg.get('events', [])[0]['updates']:
-            self._set_level(u.get('side'), float(u.get('price_level', 0)), float(u.get('new_quantity', 0)))
+            side = u.get('side')
+            price = float(u.get('price_level', 0))
+            size = float(u.get('new_quantity', 0))
+            if side == 'bid':
+                self.bids[price] = size
+            elif side == 'offer':
+                self.asks[price] = size
 
     def process_update(self, msg: Dict) -> None:
         self.process_meta_data(msg)
         for u in msg.get('events', [])[0]['updates']:
-            self._set_level(u.get('side'), float(u.get('price_level', 0)), float(u.get('new_quantity', 0)))
-
-    def _set_level(self, side: str, price: float, size: float):
-        book = self.bids if side == 'bid' else self.asks
-        book[:] = [(p, s) for (p, s) in book if p != price]
-        if size > 0:
-            book.append((price, size))
-        book.sort(key=lambda x: -x[0] if side == 'bid' else x[0])
-        if len(book) > self.top_n:
-            del book[self.top_n:]
-
-    @property
-    def best_bid(self) -> Optional[float]:
-        return self.bids[0][0] if self.bids else None
-
-    @property
-    def best_ask(self) -> Optional[float]:
-        return self.asks[0][0] if self.asks else None
-
+            side = u.get('side')
+            price = float(u.get('price_level', 0))
+            size = float(u.get('new_quantity', 0))
+            book = self.bids if side == 'bid' else self.asks
+            if size == 0:
+                book.pop(price, None)
+            else:
+                book[price] = size
     def _imbalance(self):
         bid_vol = sum(s for _, s in self.bids)
         ask_vol = sum(s for _, s in self.asks)
@@ -152,7 +145,7 @@ class LightOrderBookState(BaseOrderBook):
             "ba": self.best_ask,
             "sp": self.spread,
             "mp": self.mid_price,
-            "ib": self._imbalance()
+            "ib": self.imbalance()
         }
         try:
             self.output_file.parent.mkdir(parents=True, exist_ok=True)
