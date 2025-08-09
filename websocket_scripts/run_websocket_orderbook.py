@@ -356,7 +356,7 @@ def main():
     threads = []
 
     for batch in chunk_list(usdc_pairs, max_per_ws):
-        t = threading.Thread(target=run_tracker_for_batch, args=(batch, special_pairs), daemon=True)
+        t = threading.Thread(target=run_tracker_for_batch, args=(batch, special_pairs))
         t.start()
         threads.append(t)
         time.sleep(1)  # slight delay to stagger connections (optional)

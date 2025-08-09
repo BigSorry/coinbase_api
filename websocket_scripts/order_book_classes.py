@@ -129,10 +129,6 @@ class LightOrderBookState(BaseOrderBook):
                 book.pop(price, None)
             else:
                 book[price] = size
-    def _imbalance(self):
-        bid_vol = sum(s for _, s in self.bids)
-        ask_vol = sum(s for _, s in self.asks)
-        return bid_vol / (bid_vol + ask_vol) if (bid_vol + ask_vol) > 0 else None
 
     def _write_snapshot(self, now: datetime):
         if not self.output_file:
