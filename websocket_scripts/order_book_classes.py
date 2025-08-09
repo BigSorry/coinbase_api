@@ -1,0 +1,157 @@
+from datetime import datetime, timezone
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Dict, Tuple, List, Optional, Any
+from sortedcontainers import SortedDict
+import gzip
+import msgpack
+
+
+@dataclass
+class BaseOrderBook:
+    timestamp: str
+    product_id: str
+    sequence_num: Optional[int] = None
+    last_write_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    write_interval: int = 60
+    output_file: Optional[Path] = None
+
+    def process_meta_data(self, msg: Dict) -> None:
+        self.sequence_num = msg.get('sequence_num', -1)
+        self.timestamp = msg.get('received_at', datetime.now(timezone.utc).isoformat())
+
+    @property
+    def best_bid(self) -> Optional[float]:
+        raise NotImplementedError
+
+    @property
+    def best_ask(self) -> Optional[float]:
+        raise NotImplementedError
+
+    @property
+    def spread(self) -> Optional[float]:
+        if self.best_bid and self.best_ask:
+            return self.best_ask - self.best_bid
+        return None
+
+    @property
+    def mid_price(self) -> Optional[float]:
+        if self.best_bid and self.best_ask:
+            return (self.best_bid + self.best_ask) / 2
+        return None
+
+    def write_if_due(self):
+        now = datetime.now(timezone.utc)
+        if (now - self.last_write_time).total_seconds() >= self.write_interval:
+            self.last_write_time = now
+            self._write_snapshot(now)
+
+    def _write_snapshot(self, now: datetime):
+        raise NotImplementedError
+
+
+# -------- FULL MODE --------
+@dataclass
+class FullOrderBookState(BaseOrderBook):
+    bids: SortedDict = field(default_factory=lambda: SortedDict(lambda x: -float(x)))
+    asks: SortedDict = field(default_factory=lambda: SortedDict(lambda x: float(x)))
+
+    def process_snapshot(self, msg: Dict) -> None:
+        for u in msg.get('events', [])[0]['updates']:
+            side = u.get('side')
+            price = float(u.get('price_level', 0))
+            size = float(u.get('new_quantity', 0))
+            if side == 'bid':
+                self.bids[price] = size
+            elif side == 'offer':
+                self.asks[price] = size
+
+    def process_update(self, msg: Dict) -> None:
+        self.process_meta_data(msg)
+        for u in msg.get('events', [])[0]['updates']:
+            side = u.get('side')
+            price = float(u.get('price_level', 0))
+            size = float(u.get('new_quantity', 0))
+            book = self.bids if side == 'bid' else self.asks
+            if size == 0:
+                book.pop(price, None)
+            else:
+                book[price] = size
+
+    @property
+    def best_bid(self) -> Optional[float]:
+        return self.bids.peekitem(0)[0] if self.bids else None
+
+    @property
+    def best_ask(self) -> Optional[float]:
+        return self.asks.peekitem(0)[0] if self.asks else None
+
+    def _write_snapshot(self, now: datetime):
+        if not self.output_file:
+            return
+        self.output_file.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "t": now.isoformat(),
+            "p": self.product_id,
+            "s": self.sequence_num,
+            "bids": list(self.bids.items()),
+            "asks": list(self.asks.items())
+        }
+        with gzip.open(f"{self.output_file}.gz", "ab") as f:
+            f.write(msgpack.packb(data, use_bin_type=True))
+
+
+# -------- LIGHT MODE --------
+@dataclass
+class LightOrderBookState(BaseOrderBook):
+    top_n: int = 10
+    bids: List[Tuple[float, float]] = field(default_factory=list)
+    asks: List[Tuple[float, float]] = field(default_factory=list)
+
+    def process_snapshot(self, msg: Dict) -> None:
+        for u in msg.get('events', [])[0]['updates']:
+            self._set_level(u.get('side'), float(u.get('price_level', 0)), float(u.get('new_quantity', 0)))
+
+    def process_update(self, msg: Dict) -> None:
+        self.process_meta_data(msg)
+        for u in msg.get('events', [])[0]['updates']:
+            self._set_level(u.get('side'), float(u.get('price_level', 0)), float(u.get('new_quantity', 0)))
+
+    def _set_level(self, side: str, price: float, size: float):
+        book = self.bids if side == 'bid' else self.asks
+        book[:] = [(p, s) for (p, s) in book if p != price]
+        if size > 0:
+            book.append((price, size))
+        book.sort(key=lambda x: -x[0] if side == 'bid' else x[0])
+        if len(book) > self.top_n:
+            del book[self.top_n:]
+
+    @property
+    def best_bid(self) -> Optional[float]:
+        return self.bids[0][0] if self.bids else None
+
+    @property
+    def best_ask(self) -> Optional[float]:
+        return self.asks[0][0] if self.asks else None
+
+    def _imbalance(self):
+        bid_vol = sum(s for _, s in self.bids)
+        ask_vol = sum(s for _, s in self.asks)
+        return bid_vol / (bid_vol + ask_vol) if (bid_vol + ask_vol) > 0 else None
+
+    def _write_snapshot(self, now: datetime):
+        if not self.output_file:
+            return
+        self.output_file.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            "t": now.isoformat(),
+            "p": self.product_id,
+            "s": self.sequence_num,
+            "bb": self.best_bid,
+            "ba": self.best_ask,
+            "sp": self.spread,
+            "mp": self.mid_price,
+            "ib": self._imbalance()
+        }
+        with gzip.open(f"{self.output_file}.gz", "ab") as f:
+            f.write(msgpack.packb(data, use_bin_type=True))

@@ -73,14 +73,15 @@ def group_orders(prices, sizes, bucket_size):
 def testOrderBooks(depth_limit=1000):
     # Parse order book
     # Read file (list of snapshots)
-    snapshots = util.readZIP("../websocket_scripts/data/order_book_ETH-USD_2025-08-06T18-42-10.jsonl.gz")
+    snapshots = util.readZIP("../websocket_scripts/data/"
+                             "order_book_ETH-USD_2025-08-09T09-42-15.jsonl.gz")
 
     if not snapshots:
         print("No snapshots found.")
         return
     for i in range(len(snapshots)):
         # Use the latest snapshot (or choose based on index)
-        latest_snapshot = snapshots[i]
+        latest_snapshot = snapshots[-1]
 
         # Reconstruct OrderBookState from snapshot
         book = OrderBookState(
@@ -89,6 +90,8 @@ def testOrderBooks(depth_limit=1000):
             sequence_num=latest_snapshot.get("sequence_num")
         )
 
+
+
         # Restore bids and asks
         for price, size in latest_snapshot["bids"]:
             book.bids[float(price)] = float(size)
@@ -96,6 +99,8 @@ def testOrderBooks(depth_limit=1000):
         for price, size in latest_snapshot["asks"]:
             book.asks[float(price)] = float(size)
 
+        stats_book = book.compute_statistics(depth_levels=depth_limit)
+        print(stats_book)
         # Get depth data
         bids, asks = book.get_depth_data(levels=depth_limit)
         bid_prices, bid_sizes = zip(*bids) if bids else ([], [])
@@ -121,6 +126,7 @@ def testOrderBooks(depth_limit=1000):
         plt.legend()
         plt.grid(True, linestyle='--', alpha=0.5)
         plt.tight_layout()
+        break
     plt.show()
 
 

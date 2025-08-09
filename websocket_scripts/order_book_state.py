@@ -13,7 +13,7 @@ class OrderBookState:
     sequence_num: Optional[int] = None
     bids: SortedDict = field(default_factory=lambda: SortedDict(lambda x: -float(x)))  # Highest price first
     asks: SortedDict = field(default_factory=lambda: SortedDict(lambda x: float(x)))  # Lowest price first
-
+    
     # ⏱️ Track last write time
     last_write_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     write_interval: int = 60  # seconds (configurable)
@@ -33,6 +33,7 @@ class OrderBookState:
                     self.bids[price] = size
                 elif side == 'offer':
                     self.asks[price] = size
+
     def process_meta_data(self, msg: Dict) -> None:
         # Set sequence number and timestamp
         self.sequence_num = msg.get('sequence_num', -1)
@@ -110,3 +111,34 @@ class OrderBookState:
                     f.write(json.dumps(data_order_book) + '\n')
             except Exception as e:
                 print(f"[OrderBookState] Failed to write metrics: {e}")
+
+    def compute_statistics(self, depth_levels: int = 500) -> Dict[str, Any]:
+        """Compute key order book statistics from current state."""
+        bids_list = list(self.bids.items())[:depth_levels]
+        asks_list = list(self.asks.items())[:depth_levels]
+
+        bid_volumes = [size for _, size in bids_list]
+        ask_volumes = [size for _, size in asks_list]
+
+        bid_volume_sum = sum(bid_volumes)
+        ask_volume_sum = sum(ask_volumes)
+
+        imbalance = None
+        if (bid_volume_sum + ask_volume_sum) > 0:
+            imbalance = bid_volume_sum / (bid_volume_sum + ask_volume_sum)
+
+        stats = {
+            "timestamp": self.timestamp,
+            "product_id": self.product_id,
+            "spread": self.spread,
+            "mid_price": self.mid_price,
+            "best_bid": self.best_bid,
+            "best_bid_size": self.bids[self.best_bid] if self.best_bid in self.bids else None,
+            "best_ask": self.best_ask,
+            "best_ask_size": self.asks[self.best_ask] if self.best_ask in self.asks else None,
+            "imbalance_top_{}".format(depth_levels): imbalance,
+            "total_bid_volume_top_{}".format(depth_levels): bid_volume_sum,
+            "total_ask_volume_top_{}".format(depth_levels): ask_volume_sum,
+        }
+
+        return stats

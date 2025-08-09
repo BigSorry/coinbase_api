@@ -153,3 +153,21 @@ def convertDF(dict_data):
             rows.append([pair, dt, open_, high, low, close, volume])
     # Create DataFrame
     return pd.DataFrame(rows, columns=["pair", "timestamp", "open", "high", "low", "close", "volume"])
+
+def getTradePairs(fiat_currency="USD"):
+    url = f'https://api.exchange.coinbase.com/products/'
+    headers = {
+       'Accept': 'application/json'
+    }
+    response = requests.get(url, headers=headers)
+    trade_pairs = json.loads(response.text)
+
+    fiat_pairs = [
+        p["id"] for p in trade_pairs # ex. "BTC-USD", "ETH-USD"
+        if p.get("base_currency") == fiat_currency or
+           p.get("quote_currency") == fiat_currency
+    ]
+
+    return fiat_pairs
+
+getTradePairs()

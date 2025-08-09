@@ -163,6 +163,8 @@ class OrderBookTracker:
                 save_time = current_book.last_write_time
                 if save_time != last_save_time:
                     logger.info(f"Order book saved for {product_id} at {save_time.isoformat()}")
+                    stats_book = current_book.compute_statistics(depth_levels=1000)
+                    print(stats_book)
 
         elif message_type == "error":
             logger.error(f"WebSocket error message: {data}")
