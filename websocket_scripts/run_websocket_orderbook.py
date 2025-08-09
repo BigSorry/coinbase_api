@@ -81,14 +81,6 @@ class OrderBookTracker:
         self.last_ping = time.time()
         self.order_books: Dict[str, OrderBookState] = {}
         self.special_pairs = set(config.special_pairs)
-        # Register signal handlers
-        signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
-
-    def _signal_handler(self, sig, frame):
-        """Handle shutdown signals gracefully"""
-        logger.info(f"Received signal {sig}. Initiating graceful shutdown...")
-        self.shutdown()
 
     def _create_subscription_message(self) -> str:
         """Create subscription message"""
@@ -323,6 +315,10 @@ def chunk_list(lst, chunk_size):
     for i in range(0, len(lst), chunk_size):
         yield lst[i:i + chunk_size]
 
+shutdown_event = threading.Event()
+def signal_handler(signum, frame):
+    logging.info(f"Signal {signum} received, shutting down...")
+    shutdown_event.set()
 def run_tracker_for_batch(product_batch, special_pairs):
     # Configuration
     config = OrderBookConfig(
@@ -341,7 +337,8 @@ def run_tracker_for_batch(product_batch, special_pairs):
         tracker.start()
 
         # Keep running until shutdown
-        tracker.wait_for_shutdown()
+        while not shutdown_event.is_set():
+            time.sleep(1)
 
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
@@ -349,6 +346,9 @@ def run_tracker_for_batch(product_batch, special_pairs):
         tracker.shutdown()
 
 def main():
+    # Register signal handlers
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     special_pairs = ["BTC-USD", "ETH-USD", "SOL-USD", "ADA-USD", "XRP-USD"]
     usdc_pairs = api_get.getTradePairs(fiat_currency="USD")
 
