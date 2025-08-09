@@ -4,9 +4,7 @@ from pathlib import Path
 from typing import Dict, Tuple, List, Optional, Any
 from sortedcontainers import SortedDict
 import gzip
-import msgpack
-
-
+import json
 @dataclass
 class BaseOrderBook:
     timestamp: str
@@ -90,15 +88,19 @@ class FullOrderBookState(BaseOrderBook):
         if not self.output_file:
             return
         self.output_file.parent.mkdir(parents=True, exist_ok=True)
-        data = {
-            "t": now.isoformat(),
-            "p": self.product_id,
-            "s": self.sequence_num,
+        data_order_book = {
+            "timestamp": now.isoformat(),
+            "product_id": self.product_id,
+            "sequence_num": self.sequence_num,
             "bids": list(self.bids.items()),
-            "asks": list(self.asks.items())
+            "asks": list(self.asks.items()),
         }
-        with gzip.open(f"{self.output_file}.gz", "ab") as f:
-            f.write(msgpack.packb(data, use_bin_type=True))
+        try:
+            self.output_file.parent.mkdir(parents=True, exist_ok=True)
+            with gzip.open(f"{self.output_file}.gz", "at", encoding='utf-8') as f:
+                f.write(json.dumps(data_order_book) + '\n')
+        except Exception as e:
+            print(f"[OrderBookState] Failed to write metrics: {e}")
 
 
 # -------- LIGHT MODE --------
@@ -142,7 +144,6 @@ class LightOrderBookState(BaseOrderBook):
     def _write_snapshot(self, now: datetime):
         if not self.output_file:
             return
-        self.output_file.parent.mkdir(parents=True, exist_ok=True)
         data = {
             "t": now.isoformat(),
             "p": self.product_id,
@@ -153,5 +154,9 @@ class LightOrderBookState(BaseOrderBook):
             "mp": self.mid_price,
             "ib": self._imbalance()
         }
-        with gzip.open(f"{self.output_file}.gz", "ab") as f:
-            f.write(msgpack.packb(data, use_bin_type=True))
+        try:
+            self.output_file.parent.mkdir(parents=True, exist_ok=True)
+            with gzip.open(f"{self.output_file}.gz", "at", encoding='utf-8') as f:
+                f.write(json.dumps(data) + '\n')
+        except Exception as e:
+            print(f"[OrderBookState] Failed to write metrics: {e}")

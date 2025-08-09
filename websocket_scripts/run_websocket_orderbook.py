@@ -28,6 +28,8 @@ from dataclasses import dataclass
 from pathlib import Path
 import queue
 from order_book_state import OrderBookState
+from order_book_classes import LightOrderBookState, FullOrderBookState
+import api_scripts.get_request as api_get
 
 # Configure logging
 logging.basicConfig(
@@ -46,6 +48,7 @@ class OrderBookConfig:
     """Configuration for the order book tracker"""
     ws_url: str = "wss://advanced-trade-ws.coinbase.com"
     product_ids: List[str] = None
+    special_pairs: List[str] = None
     channel_name: str = "level2"
     auto_unsubscribe_after: Optional[int] = None  # seconds
     reconnect_attempts: int = 5
@@ -56,6 +59,8 @@ class OrderBookConfig:
     def __post_init__(self):
         if self.product_ids is None:
             self.product_ids = ["BTC-USD"]
+        if self.special_pairs is None:
+            self.special_pairs = []
 
 
 class OrderBookTracker:
@@ -75,6 +80,7 @@ class OrderBookTracker:
         self.reconnect_count = 0
         self.last_ping = time.time()
         self.order_books: Dict[str, OrderBookState] = {}
+        self.special_pairs = set(config.special_pairs)
         # Register signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -133,38 +139,47 @@ class OrderBookTracker:
     def _process_message(self, data: Dict[str, Any]):
         """Process different types of messages"""
         message_type = data["events"][0].get("type")
-
+        product_id = data["events"][0].get("product_id", "")
         if message_type == "subscriptions":
             logger.info(f"Subscription confirmed: {data}")
 
         elif message_type == "snapshot":
-            logger.info(f"Orderbook snapshot")
-            product_id = data["events"][0]['product_id']
-            logger.info(f"Snapshot received for {product_id}")
             timestamp_str = data['received_at'].replace(":", "-").replace("+", "_").split(".")[0]
-            # Create new OrderBookState from snapshot
-            book = OrderBookState(
-                timestamp=data["received_at"],
-                product_id=product_id,
-                sequence_num=data.get("sequence"),
-                output_file=Path(f"./data/order_book_{product_id}"
-                                 f"_{timestamp_str}.jsonl")
-            )
+            if product_id in self.special_pairs:
+                logger.info(f"Snapshot Special pair detected: {product_id}")
+                # Create new OrderBookState from snapshot
+                book = FullOrderBookState(
+                    timestamp=data["received_at"],
+                    product_id=product_id,
+                    sequence_num=data.get("sequence"),
+                    output_file=Path(f"./data/order_book_{product_id}"
+                                     f"_{timestamp_str}.jsonl")
+                )
+
+            else:
+                logger.info(f"Snapshot Normal pair detected: {product_id}")
+                book = LightOrderBookState(
+                    timestamp=data["received_at"],
+                    product_id=product_id,
+                    sequence_num=data.get("sequence"),
+                    output_file=Path(f"./data/order_book_{product_id}"
+                                     f"_{timestamp_str}.jsonl")
+                )
+
             book.process_snapshot(data)
             self.order_books[product_id] = book
 
         elif message_type == "update":
-            product_id = data["events"][0]['product_id']
             current_book = self.order_books.get(product_id)
             if current_book:
                 current_book.process_update(data)
-                last_save_time = current_book.last_write_time
-                current_book.write_metrics_if_due()
-                save_time = current_book.last_write_time
-                if save_time != last_save_time:
-                    logger.info(f"Order book saved for {product_id} at {save_time.isoformat()}")
-                    stats_book = current_book.compute_statistics(depth_levels=1000)
-                    print(stats_book)
+                previous_save_time = current_book.last_write_time
+                current_book.write_if_due()
+                current_save_time = current_book.last_write_time
+                if previous_save_time != current_save_time:
+                    logger.info(f"Order book saved for {product_id} at {current_save_time.isoformat()}")
+                    mid_price = current_book.mid_price
+                    print(product_id, "Mid Price", mid_price)
 
         elif message_type == "error":
             logger.error(f"WebSocket error message: {data}")
@@ -303,13 +318,16 @@ class OrderBookTracker:
                 time.sleep(1)
         except KeyboardInterrupt:
             self.shutdown()
+def chunk_list(lst, chunk_size):
+    """Split list into chunks of max chunk_size"""
+    for i in range(0, len(lst), chunk_size):
+        yield lst[i:i + chunk_size]
 
-
-def main():
-    """Main function"""
+def run_tracker_for_batch(product_batch, special_pairs):
     # Configuration
     config = OrderBookConfig(
-        product_ids=["BTC-USD", "ETH-USD"],  # Multiple products
+        product_ids=product_batch,  # Multiple products
+        special_pairs=special_pairs,  # Special pairs to track
         channel_name="level2",
         auto_unsubscribe_after=None,  # Set to None for continuous running
         reconnect_attempts=5,
@@ -330,6 +348,22 @@ def main():
     finally:
         tracker.shutdown()
 
+def main():
+    special_pairs = ["BTC-USD", "ETH-USD", "SOL-USD", "ADA-USD", "XRP-USD"]
+    usdc_pairs = api_get.getTradePairs(fiat_currency="USD")
+
+    max_per_ws = 20  # max pairs per websocket
+    threads = []
+
+    for batch in chunk_list(usdc_pairs, max_per_ws):
+        t = threading.Thread(target=run_tracker_for_batch, args=(batch, special_pairs), daemon=True)
+        t.start()
+        threads.append(t)
+        time.sleep(1)  # slight delay to stagger connections (optional)
+
+    # Wait for all threads to finish (likely never unless shutdown requested)
+    for t in threads:
+        t.join()
 
 if __name__ == "__main__":
     main()

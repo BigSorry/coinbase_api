@@ -169,5 +169,3 @@ def getTradePairs(fiat_currency="USD"):
     ]
 
     return fiat_pairs
-
-getTradePairs()

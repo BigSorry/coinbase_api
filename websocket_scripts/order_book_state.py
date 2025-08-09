@@ -13,7 +13,7 @@ class OrderBookState:
     sequence_num: Optional[int] = None
     bids: SortedDict = field(default_factory=lambda: SortedDict(lambda x: -float(x)))  # Highest price first
     asks: SortedDict = field(default_factory=lambda: SortedDict(lambda x: float(x)))  # Lowest price first
-    
+
     # ⏱️ Track last write time
     last_write_time: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     write_interval: int = 60  # seconds (configurable)
@@ -105,8 +105,6 @@ class OrderBookState:
 
             try:
                 self.output_file.parent.mkdir(parents=True, exist_ok=True)
-                # with open(self.output_file, 'a', encoding='utf-8') as f:
-                #     f.write(json.dumps(data_order_book) + '\n')
                 with gzip.open(f"{self.output_file}.gz", "at", encoding='utf-8') as f:
                     f.write(json.dumps(data_order_book) + '\n')
             except Exception as e:
