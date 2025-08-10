@@ -84,9 +84,6 @@ class FullOrderBookState(BaseOrderBook):
                 book[price] = size
 
     def _write_snapshot(self, now: datetime):
-        if not self.output_file:
-            return
-        self.output_file.parent.mkdir(parents=True, exist_ok=True)
         data_order_book = {
             "timestamp": now.isoformat(),
             "product_id": self.product_id,

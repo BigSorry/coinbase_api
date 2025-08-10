@@ -12,7 +12,8 @@ import queue
 
 # Imports for your order book logic
 from order_book_state import OrderBookState
-from order_book_classes import LightOrderBookState, FullOrderBookState
+from order_book_classes import LightOrderBookState, FullOrderBookState, BaseOrderBook
+from price_history import PriceHistoryTracker
 import api_scripts.get_request as api_get
 
 # Configure logging
@@ -54,7 +55,8 @@ class OrderBookTracker:
         self.connected = threading.Event()
         self.shutdown_requested = threading.Event()
         self.reconnect_count = 0
-        self.order_books: Dict[str, OrderBookState] = {}
+        self.order_books: Dict[str, BaseOrderBook] = {}
+        self.price_histories: Dict[str, PriceHistoryTracker] = {}
         self.special_pairs = set(config.special_pairs)
 
     def _create_subscription_message(self) -> str:
@@ -91,6 +93,52 @@ class OrderBookTracker:
         except Exception as e:
             logger.error(f"Error processing message: {e}")
 
+    def createPriceHistoryTracker(self, product_id: str, timestamp_str : str) -> None:
+        if product_id in self.special_pairs:
+            self.price_histories[product_id] = PriceHistoryTracker(
+                product_id=product_id,
+                min_change_pct=0.005,
+                min_change_abs=0.01,
+                min_time_interval=2,
+                max_size=15000,
+                output_file=Path(f"./data/special_track_prices/prices_{product_id}_{timestamp_str}.jsonl")
+            )
+        else:
+            self.price_histories[product_id] = PriceHistoryTracker(
+                product_id=product_id,
+                output_file=Path(f"./data/track_prices/prices_{product_id}_{timestamp_str}.jsonl")
+            )   # default settings
+        logger.info(f"Price history tracker initialized for {product_id}")
+
+    def createOrderBookState(self, data: Dict[str, Any], product_id: str, timestamp_str : str) -> None:
+        if product_id in self.special_pairs:
+            self.order_books[product_id] = FullOrderBookState(
+                timestamp=data["received_at"],
+                product_id=product_id,
+                sequence_num=data.get("sequence"),
+                output_file=Path(f"./data/order_book_{product_id}_{timestamp_str}.jsonl")
+            )
+        else:
+            self.order_books[product_id] = LightOrderBookState(
+                timestamp=data["received_at"],
+                product_id=product_id,
+                sequence_num=data.get("sequence"),
+                output_file=Path(f"./data/order_book_{product_id}_{timestamp_str}.jsonl")
+            )
+        self.order_books[product_id].process_snapshot(data)
+        logger.info(f"Order book initialized for {product_id}")
+
+    def updateOrderBookState(self, product_id: str, data: Dict[str, Any]) -> None:
+        current_book = self.order_books.get(product_id)
+        if current_book:
+            current_book.process_update(data)
+            # Save only if it's a special pair and write interval is due
+            if product_id in self.special_pairs:
+                prev_time = current_book.last_write_time
+                current_book.write_if_due()
+                if prev_time != current_book.last_write_time:
+                    logger.info(f"Order book saved for {product_id}")
+
     def _process_message(self, data: Dict[str, Any]):
         msg_type = data["events"][0].get("type")
         product_id = data["events"][0].get("product_id", "")
@@ -100,30 +148,16 @@ class OrderBookTracker:
 
         elif msg_type == "snapshot":
             timestamp_str = data["received_at"].replace(":", "-").replace("+", "_").split(".")[0]
-            if product_id in self.special_pairs:
-                book = FullOrderBookState(
-                    timestamp=data["received_at"], product_id=product_id,
-                    sequence_num=data.get("sequence"),
-                    output_file=Path(f"./data/order_book_{product_id}_{timestamp_str}.jsonl")
-                )
-            else:
-                book = LightOrderBookState(
-                    timestamp=data["received_at"], product_id=product_id,
-                    sequence_num=data.get("sequence"),
-                    output_file=Path(f"./data/order_book_{product_id}_{timestamp_str}.jsonl")
-                )
-            book.process_snapshot(data)
-            self.order_books[product_id] = book
+            self.createOrderBookState(data, product_id, timestamp_str)
+            self.createPriceHistoryTracker(product_id, timestamp_str)
 
         elif msg_type == "update":
-            current_book = self.order_books.get(product_id)
-            if current_book:
-                current_book.process_update(data)
-                prev_time = current_book.last_write_time
-                current_book.write_if_due()
-                if prev_time != current_book.last_write_time:
-                    logger.info(f"Order book saved for {product_id}")
-                    logger.info(f"{product_id} Mid Price {current_book.mid_price}")
+            # Feed mid price into price history
+            if product_id in self.price_histories:
+                self.updateOrderBookState(product_id, data)
+                # TODO Uncouple price history from order book state
+                self.price_histories[product_id].record(self.order_books[product_id].mid_price)
+                self.price_histories[product_id].write_prices()
 
         elif msg_type == "error":
             logger.error(f"WebSocket error message: {data}")
@@ -210,12 +244,12 @@ def signal_handler(signum, frame):
 
 # --- Per-batch runner ---
 def run_tracker_for_batch(product_batch, special_pairs):
-    config = OrderBookConfig(
+    orderbook_config = OrderBookConfig(
         product_ids=product_batch,
         special_pairs=special_pairs,
         channel_name="level2"
     )
-    tracker = OrderBookTracker(config)
+    tracker = OrderBookTracker(orderbook_config)
     try:
         tracker.start_blocking()
     except Exception as e:
@@ -232,6 +266,7 @@ def main():
     special_pairs = ["BTC-USD", "ETH-USD", "SOL-USD", "ADA-USD", "XRP-USD"]
     usdc_pairs = api_get.getTradePairs(fiat_currency="USD")
 
+
     max_per_ws = 20
     threads = []
 
@@ -239,7 +274,7 @@ def main():
         t = threading.Thread(target=run_tracker_for_batch, args=(batch, special_pairs))
         t.start()
         threads.append(t)
-        time.sleep(.5)  # stagger connections to avoid rate limits
+        time.sleep(1)  # stagger connections to avoid rate limits
 
     # Wait for shutdown signal
     shutdown_event.wait()
