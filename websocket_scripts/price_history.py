@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import List, Tuple, Optional
 from pathlib import Path
+import communication as comm
 import gzip
 import json
 
@@ -9,6 +10,7 @@ import json
 class PriceHistoryTracker:
     product_id: str = "" # trade pair
     min_change_pct: float = 0.001  # 0.1% default
+    big_change_pct: float = 0.05
     min_change_abs: float = 0.0    # absolute price change filter
     min_time_interval: float = 5.0 # seconds
     write_interval: int = 30
@@ -37,6 +39,8 @@ class PriceHistoryTracker:
         pct_change = abs(price - self._last_price) / self._last_price if self._last_price else 0
         abs_change = abs(price - self._last_price)
 
+        if pct_change >= self.big_change_pct:
+            comm.send_mail(self.product_id, self.history)
         if pct_change >= self.min_change_pct or abs_change >= self.min_change_abs:
             self._append(now, price)
 
@@ -65,3 +69,4 @@ class PriceHistoryTracker:
                     f.write(json.dumps(price_history) + '\n')
             except Exception as e:
                 print(f"[OrderBookState] Failed to write metrics: {e}")
+
