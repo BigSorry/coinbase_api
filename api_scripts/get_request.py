@@ -26,7 +26,7 @@ def getApiAdvanced(endpoint):
         print(f"Error: {response.status_code}, {response.text}")
         return None
 
-def getPortfolio(min_value_usdc=50, fiat_currency="USD"):
+def getPortfolio(min_value_usdc=50, fiat_currency="USD", include_holds=False, return_ids=False):
     "Fetches the latest price for a given product ID from Coinbase Advanced Trade API."
     endpoint = f"/api/v3/brokerage/accounts"
     portfolio_data = getApiAdvanced(endpoint)
@@ -34,7 +34,12 @@ def getPortfolio(min_value_usdc=50, fiat_currency="USD"):
     fiats = ["USD", "USDC", "EUR", "GBP", "JPY", "AUD", "CAD"]
     for account in portfolio_data.get('accounts', []):
         balance = float(account['available_balance']['value'])
-        if balance is None or balance <= 0:
+        hold_balance = float(account['hold']['value'])
+        total_balance = balance
+        if include_holds:
+            total_balance += hold_balance
+
+        if total_balance is None or total_balance <= 0:
             continue
         currency = account["currency"]
         if any(fiat in currency for fiat in fiats):
@@ -42,9 +47,13 @@ def getPortfolio(min_value_usdc=50, fiat_currency="USD"):
             continue
         product_id = f"{currency}-{fiat_currency}"
         current_price = getCurrentPrice(product_id)
-        total_value = balance * current_price if current_price else 0
+        # Also include what is currently on hold due to open orders
+        total_value = total_balance * current_price if current_price else 0
         if total_value > min_value_usdc:
             items_included[product_id] = balance
+
+    if return_ids:
+        return items_included, list(items_included.keys())
     return items_included
 def getProductInfo(product_id):
     "Get Product details "
@@ -79,8 +88,51 @@ def getOrders(end_point_param):
     request_method = "GET"
     request_host = "api.coinbase.com"
     endpoint = f"/api/v3/brokerage/{end_point_param}"
+
     return getApiAdvanced(endpoint)
 
+# TODO cancel ordering delte doesnt work
+def deleteOrder(order_id):
+    """Fetches open orders from Coinbase Advanced Trade API."""
+    request_method = "DELETE"
+    request_host = "api.exchange.com"
+    endpoint = f"/orders/{order_id}"
+    jwt_token = auth.getJWT(request_method, request_host, endpoint)
+
+    headers = {
+        "Authorization": f"Bearer {jwt_token}",
+        "Content-Type": "application/json"
+    }
+    base_url = "https://api.exchange.coinbase.com"
+    url = base_url + endpoint
+    response = requests.get(url, headers=headers)
+
+    if response.status_code == 200:
+        data = response.json()
+        return data
+    else:
+        print(f"Error: {response.status_code}, {response.text}")
+        return None
+def cancelOrder(order_type_cancel="STOP_LIMIT"):
+    "Fetches the latest price for a given product ID from Coinbase Advanced Trade API."
+    endpoint = f"/api/v3/brokerage/orders/historical/batch"
+    portfolio_data = getApiAdvanced(endpoint)
+    orders = portfolio_data.get('orders', [])
+    for order in orders:
+        side = order.get('side', '').upper()
+        status = order.get('status', '').upper()
+        if side != "SELL" and status != "OPEN":
+            continue
+
+        order_type = order.get('order_type', '').upper()
+        if order_type == order_type_cancel:
+            order_id = order.get('order_id', "")
+            product_id = order.get('product_id', "")
+            if order_id:
+                print("Try to delete:", product_id)
+                deleteOrder(order_id)
+
+#cancelOrder()
 """
 First method made for coinbase base exchange
 """

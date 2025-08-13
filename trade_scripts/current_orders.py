@@ -52,15 +52,17 @@ def adjust_coin_quantities(fills):
 sel_date = datetime.datetime(2025, 8, 1, 0, 0)
 end_point_param = "orders/historical/fills"
 orders = api_get.getOrders(end_point_param)
+
 fills = orders["fills"]
 buy_fills_dict = getBuyFills(fills, sel_date)
 result = adjust_coin_quantities(buy_fills_dict)
-
+fee_multiplier = 0.9975 # 0.25% sell fee
 for coin_pair, buy_info in result.items():
     current_price = api_get.getCurrentPrice(coin_pair)
-    price_percent_change = (current_price / buy_info["avg_price"]) * 100
+    fee_reduced_price = current_price * fee_multiplier
+    price_percent_change = (fee_reduced_price / buy_info["avg_price"]) * 100
 
     print(coin_pair)
     print(f"calc with {price_percent_change:.3f}")
-    print(buy_info["avg_price"], "old vs new", current_price)
+    print(buy_info["avg_price"], "old vs new", fee_reduced_price)
     print()

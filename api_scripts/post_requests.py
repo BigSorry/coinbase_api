@@ -60,8 +60,27 @@ def placeLimitOrder(pair_id, limit_price, base_size, side):
 
     postApiAdvanced(endpoint, order_payload)
 
+
+def placeStopLimitOrder(pair_id, stop_price, limit_price, base_size, side):
+    endpoint = f"/api/v3/brokerage/orders"
+    # ==== Create order body ====
+    order_payload = {
+        "client_order_id": str(uuid.uuid4()),
+        "product_id": pair_id + "C",
+        "side": side,
+        "order_configuration": {
+            "stop_limit_stop_limit_gtc": {
+                "stop_price": stop_price,
+                "limit_price": limit_price,
+                "base_size": base_size
+            }
+        }
+    }
+
+    postApiAdvanced(endpoint, order_payload)
 def buyLimitOrder(pair_id, limit_price, base_size):
     placeLimitOrder(pair_id, limit_price, base_size, "BUY")
 
 def sellLimitOrder(pair_id, limit_price, base_size):
     placeLimitOrder(pair_id, limit_price, base_size, "SELL")
+
