@@ -2,56 +2,30 @@ import api_scripts.get_request as get_req
 import api_scripts.post_requests as post_req
 from decimal import Decimal, ROUND_DOWN
 
-# ==== ROUND BASE SIZE ====
-from websocket_scripts.order_book_classes import FullOrderBookState
-
-
-def round_base_size(value, increment):
-    return Decimal(value).quantize(Decimal(increment), rounding=ROUND_DOWN)
-
-def sellOrder(fiat_amount=1):
-    product_ids = ["BTC-USD", "ETH-USD", "XRP-USD", "SOL-USD",
-                   "ADA-USD"]
-    prices = get_req.getCurrentBestBidAsk(product_ids)
-    for product_id in product_ids:
-        info = get_req.getProductInfo(product_id)
-        if 'price' not in info:
-            print(f"❌ Failed to fetch product info for {product_id}")
-            continue
-
-        best_ask_price = Decimal(prices[product_id]["asks"][0]["price"])
-        base_increment = info['base_increment']
-        min_order_size = Decimal(info['base_min_size'])
-        # Calculate base size (amount of coin to sell)
-        base_size = Decimal(fiat_amount) / best_ask_price
-        base_size = round_base_size(base_size, base_increment)
-
-        if base_size < min_order_size:
-            print(f"⚠️ Order for {product_id} too small: {base_size} < min {min_order_size}")
-            continue
-
-        post_req.sellLimitOrder(product_id, str(best_ask_price), str(base_size))
+def roundingAmount(product_info, balance_amount):
+    base_increment = product_info['base_increment']
+    rounded_base_size = Decimal(balance_amount).quantize(Decimal(base_increment), rounding=ROUND_DOWN)
+    return rounded_base_size
 
 def sellPortFolio(percentage_of_portfolio=0.1):
     portfolio_dict = get_req.getPortfolio(min_value_usdc=20, fiat_currency="USD")
     product_ids = list(portfolio_dict.keys())
     prices = get_req.getCurrentBestBidAsk(product_ids)
     for product_id, balance_amount in portfolio_dict.items():
-        info = get_req.getProductInfo(product_id)
-        if 'price' not in info:
+        product_info = get_req.getProductInfo(product_id)
+        if 'price' not in product_info:
             print(f"❌ Failed to fetch product info for {product_id}")
             continue
-        crypto_selling = balance_amount * percentage_of_portfolio
         best_ask_price = Decimal(prices[product_id]["asks"][0]["price"])
-        base_increment = info['base_increment']
-        base_size = round_base_size(crypto_selling, base_increment)
 
-        min_order_size = Decimal(info['base_min_size'])
-        if base_size < min_order_size:
-            print(f"⚠️ Order for {product_id} too small: {base_size} < min {min_order_size}")
+        sell_amount = balance_amount * percentage_of_portfolio
+        sell_size = roundingAmount(product_info, sell_amount)
+        min_order_size = Decimal(product_info['base_min_size'])
+        if sell_size < min_order_size:
+            print(f"⚠️ Order for {product_id} too small: {sell_size} < min {min_order_size}")
             continue
 
-        post_req.sellLimitOrder(product_id, str(best_ask_price), str(base_size))
+        post_req.sellLimitOrder(product_id, str(best_ask_price), str(sell_size))
 
 
 from collections import defaultdict
@@ -104,12 +78,21 @@ def updateStopLimit(post_new_orders=False):
 
     for trade_pair_id, balance_amount in portfolio_dict.items():
         books = get_req.getOrderBook(trade_pair_id, detail_level=2)
-
+        # Find prices based on the order book walls
         test = find_wall(books, "sell", price_window=0.1, wall_factor=1, tick_group=.01)
         stop_price = test["wall_price"]
         limit_price = round(stop_price * 0.99, 2)
-        print(f"{trade_pair_id} Stop Price: {stop_price}, Limit Price: {limit_price}")
+        # Round if there are too many decimals
+        # Amount quantities allowed is also different per trade-pair
+        product_info = get_req.getProductInfo(trade_pair_id)
+        sell_size = roundingAmount(product_info, balance_amount)
+        min_order_size = Decimal(product_info['base_min_size'])
+        print(f"{trade_pair_id} Stop Price: {stop_price}, Limit Price: {limit_price}, sell size {sell_size}")
+        if sell_size < min_order_size:
+            print(f"⚠️ Order for {trade_pair_id} too small: {sell_size} < min {min_order_size}")
+            continue
+
         if post_new_orders:
             post_req.placeStopLimitOrder(trade_pair_id, str(stop_price), str(limit_price),
-                                     str(balance_amount), "SELL")
-updateStopLimit()
+                                     str(sell_size), "SELL")
+updateStopLimit(post_new_orders=True)

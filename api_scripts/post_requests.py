@@ -1,7 +1,7 @@
 import json, requests
 import api_scripts.authenticate as auth
 import uuid
-import time
+from api_scripts.get_request import getApiAdvanced
 
 def postApiAdvanced(endpoint, body_content):
     "Fetches the latest price for a given product ID from Coinbase Advanced Trade API."
@@ -84,3 +84,28 @@ def buyLimitOrder(pair_id, limit_price, base_size):
 def sellLimitOrder(pair_id, limit_price, base_size):
     placeLimitOrder(pair_id, limit_price, base_size, "SELL")
 
+def cancelOrder(cancel_side="SELL",cancel_order_type="STOP_LIMIT"):
+    "Fetches the latest price for a given product ID from Coinbase Advanced Trade API."
+    get_endpoint = f"/api/v3/brokerage/orders/historical/batch"
+    post_endpoint = f"/api/v3/brokerage/orders/batch_cancel"
+    delete_payload = {"order_ids": []}
+    portfolio_data = getApiAdvanced(get_endpoint)
+    orders = portfolio_data.get('orders', [])
+    for order in orders:
+        side = order.get('side', '').upper()
+        status = order.get('status', '').upper()
+        if side != cancel_side or status != "OPEN":
+            continue
+
+        order_type = order.get('order_type', '').upper()
+        if order_type == cancel_order_type:
+            client_order_id = order.get('order_id', "")
+            product_id = order.get('product_id', "")
+            if client_order_id and "BTC" in product_id:
+                print("Try to delete:", product_id)
+                delete_payload["order_ids"].append(client_order_id)
+
+    postApiAdvanced(post_endpoint, delete_payload)
+
+
+cancelOrder()

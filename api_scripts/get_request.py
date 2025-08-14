@@ -91,48 +91,6 @@ def getOrders(end_point_param):
 
     return getApiAdvanced(endpoint)
 
-# TODO cancel ordering delte doesnt work
-def deleteOrder(order_id):
-    """Fetches open orders from Coinbase Advanced Trade API."""
-    request_method = "DELETE"
-    request_host = "api.exchange.com"
-    endpoint = f"/orders/{order_id}"
-    jwt_token = auth.getJWT(request_method, request_host, endpoint)
-
-    headers = {
-        "Authorization": f"Bearer {jwt_token}",
-        "Content-Type": "application/json"
-    }
-    base_url = "https://api.exchange.coinbase.com"
-    url = base_url + endpoint
-    response = requests.get(url, headers=headers)
-
-    if response.status_code == 200:
-        data = response.json()
-        return data
-    else:
-        print(f"Error: {response.status_code}, {response.text}")
-        return None
-def cancelOrder(order_type_cancel="STOP_LIMIT"):
-    "Fetches the latest price for a given product ID from Coinbase Advanced Trade API."
-    endpoint = f"/api/v3/brokerage/orders/historical/batch"
-    portfolio_data = getApiAdvanced(endpoint)
-    orders = portfolio_data.get('orders', [])
-    for order in orders:
-        side = order.get('side', '').upper()
-        status = order.get('status', '').upper()
-        if side != "SELL" and status != "OPEN":
-            continue
-
-        order_type = order.get('order_type', '').upper()
-        if order_type == order_type_cancel:
-            order_id = order.get('order_id', "")
-            product_id = order.get('product_id', "")
-            if order_id:
-                print("Try to delete:", product_id)
-                deleteOrder(order_id)
-
-#cancelOrder()
 """
 First method made for coinbase base exchange
 """

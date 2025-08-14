@@ -49,7 +49,7 @@ def adjust_coin_quantities(fills):
 
     return result
 
-sel_date = datetime.datetime(2025, 8, 1, 0, 0)
+sel_date = datetime.datetime(2025, 7, 1, 0, 0)
 end_point_param = "orders/historical/fills"
 orders = api_get.getOrders(end_point_param)
 
