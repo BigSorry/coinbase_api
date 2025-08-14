@@ -23,6 +23,8 @@ def postApiAdvanced(endpoint, body_content):
         print(json.dumps(response.json(), indent=2))
     except:
         print(response.text)
+
+# TODO consolidate the two methods into one
 def placeLimitOrder(pair_id, limit_price, base_size, side):
     endpoint = f"/api/v3/brokerage/orders"
     # ==== Create order body ====
@@ -87,6 +89,3 @@ def cancelOrder(cancel_side="SELL",cancel_order_type="STOP_LIMIT"):
                 delete_payload["order_ids"].append(order_id)
 
     postApiAdvanced(post_endpoint, delete_payload)
-
-
-cancelOrder()

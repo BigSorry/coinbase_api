@@ -52,6 +52,8 @@ def adjust_coin_quantities(fills):
 sel_date = datetime.datetime(2025, 7, 1, 0, 0)
 end_point_param = "orders/historical/fills"
 orders = api_get.getOrders(end_point_param)
+get_endpoint = f"orders/historical/batch"
+test = api_get.getOrders(get_endpoint)
 
 fills = orders["fills"]
 buy_fills_dict = getBuyFills(fills, sel_date)
