@@ -24,10 +24,6 @@ def testOpenOrder():
         print(fill["product_id"], fill["trade_time"])
         break
 
-def testCreateOrder():
-    # Default all fills
-    post_req.createOrder()
-
 def testPriceHistory():
     ids = ["BTC-USD", "ETH-USD"]
     days_ago = 30
@@ -131,9 +127,7 @@ def testOrderBooks(depth_limit=1000):
 
 
 testOrderBooks()
-
 #buyOrder(usdc_amount = 1)
 # testPriceHistory()
-# testCreateOrder()
 #testCurrentPrice()
 # testOpenOrder()

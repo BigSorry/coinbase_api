@@ -23,25 +23,6 @@ def postApiAdvanced(endpoint, body_content):
         print(json.dumps(response.json(), indent=2))
     except:
         print(response.text)
-
-def createOrder():
-    endpoint = f"/api/v3/brokerage/orders"
-    # ==== Create order body ====
-    order_payload = {
-        "client_order_id": str(uuid.uuid4()),
-        "product_id": "BTC-USDC",
-        "side": "BUY",
-        "order_configuration": {
-            "limit_limit_gtc": {
-                "base_size": "0.000001",
-                "limit_price": "40000",
-                "post_only": False
-            }
-        }
-    }
-
-    postApiAdvanced(endpoint, order_payload)
-
 def placeLimitOrder(pair_id, limit_price, base_size, side):
     endpoint = f"/api/v3/brokerage/orders"
     # ==== Create order body ====
@@ -99,11 +80,11 @@ def cancelOrder(cancel_side="SELL",cancel_order_type="STOP_LIMIT"):
 
         order_type = order.get('order_type', '').upper()
         if order_type == cancel_order_type:
-            client_order_id = order.get('order_id', "")
+            order_id = order.get('order_id', "")
             product_id = order.get('product_id', "")
-            if client_order_id and "BTC" in product_id:
+            if order_id:
                 print("Try to delete:", product_id)
-                delete_payload["order_ids"].append(client_order_id)
+                delete_payload["order_ids"].append(order_id)
 
     postApiAdvanced(post_endpoint, delete_payload)
 
